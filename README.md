@@ -18,7 +18,7 @@ machine, and it runs on the Claude Code login you already have.
 
 **v0.1 — runnable core.** The agent backend, the bridge, config, the setup
 wizard, and a **terminal channel** all work today and are covered by tests. The
-**WeChat channel is a stub** — see [Why WeChat is a stub](#why-wechat-is-a-stub).
+**WeChat channel is a stub** — see [WeChat support](#wechat-support).
 
 ## Quickstart
 
@@ -75,15 +75,18 @@ src/
    are opt-in — the latter needs a typed confirmation in the wizard.
 4. **Channel-neutral core.** No platform's vocabulary in a shared signature.
 
-## Why WeChat is a stub
+## WeChat support
 
-Automating a personal WeChat account means driving reverse-engineered,
-undocumented endpoints, and it violates Tencent's Terms of Service — it can get
-the account banned. That integration is the operator's to supply, on their own
-account and their own risk; this project does not ship or redistribute it.
-[`src/channel/wechat.ts`](src/channel/wechat.ts) is the interface to implement;
-everything above the `ChannelAdapter` seam already works, exercised by the
-terminal channel.
+WeChat integration is planned through the **official** OpenClaw Weixin channel —
+Tencent's sanctioned plugin for connecting AI agents (in WeChat: 我 → 设置 →
+插件 → ClawBot, authorized by OAuth QR code). It installs via the official
+[`@tencent-weixin/openclaw-weixin-cli`](https://www.npmjs.com/package/@tencent-weixin/openclaw-weixin-cli)
+package — **no reverse-engineered protocols, no personal-account automation, no
+ban risk**.
+
+It is currently a stub: [`src/channel/wechat.ts`](src/channel/wechat.ts) is the
+`ChannelAdapter` to wire to that plugin. Everything above the seam already
+works, exercised by the terminal channel.
 
 ## Security
 
@@ -119,8 +122,9 @@ to a local agent" idea comes from it, and several key parts of
 
 What changed: this reworks it into a resident-process **pool** (start once, reuse
 across turns), hides all of it behind the `AgentBackend` interface, and cleanly
-separates the agent from the chat channel. The **WeChat integration code is not
-copied** (see [Why WeChat is a stub](#why-wechat-is-a-stub)).
+separates the agent from the chat channel. The **WeChat integration is not
+copied from it** — that goes through the official OpenClaw Weixin channel instead
+(see [WeChat support](#wechat-support)).
 
 ## License
 

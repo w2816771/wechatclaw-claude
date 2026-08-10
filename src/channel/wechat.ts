@@ -7,26 +7,26 @@ import type {
 } from "./types.js";
 
 /**
- * WeChat channel — intentionally a stub.
+ * WeChat channel — a stub, to be wired to the official OpenClaw Weixin channel.
  *
- * Automating a personal WeChat account means driving reverse-engineered,
- * undocumented endpoints, and it is against Tencent's Terms of Service — it can
- * get the account banned. That integration is therefore the operator's to
- * supply, on their own account and their own risk; this project does not ship,
- * bundle, or redistribute it.
+ * Integration goes through Tencent's sanctioned agent plugin, installed via
+ * `@tencent-weixin/openclaw-weixin-cli` and authorized in-app (WeChat → 设置 →
+ * 插件 → ClawBot) with an OAuth QR code. No reverse-engineered protocols, no
+ * personal-account automation — so nothing here risks a ban or redistributes
+ * someone else's endpoints.
  *
- * To wire a real WeChat client in, implement this interface: call `sink(...)`
- * for each inbound message, and fulfill `send()` against the client. Everything
- * above the ChannelAdapter seam — routing, access control, reply chunking,
- * streaming — already works and is exercised by the terminal channel.
+ * To implement: install/attach the OpenClaw Weixin plugin, call `sink(...)` for
+ * each inbound message, and fulfill `send()` against it. Everything above the
+ * ChannelAdapter seam — routing, access control, reply streaming — already
+ * works and is exercised by the terminal channel.
  */
 export class WeChatChannel implements ChannelAdapter {
   readonly id = "wechat";
 
   async start(_sink: InboundSink): Promise<void> {
     throw new Error(
-      "WeChat channel is a stub. See src/channel/wechat.ts — you must supply the " +
-        "WeChat client integration yourself. The terminal channel works today.",
+      "WeChat channel is a stub — wire it to the OpenClaw Weixin plugin " +
+        "(@tencent-weixin/openclaw-weixin-cli). The terminal channel works today.",
     );
   }
 
