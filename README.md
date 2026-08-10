@@ -17,19 +17,22 @@ routes messages to a Claude Code agent working in a directory you nominate.
 ```
 
 Nothing is hosted. The service binds to loopback, your files stay on your
-machine, and your Claude Code credentials never leave it.
+machine, and it runs on **your existing Claude Code subscription** — no
+per-token API bill.
 
 ## Design in one page
 
-Built on [`@anthropic-ai/claude-agent-sdk`](https://code.claude.com/docs/en/agent-sdk),
-not on spawning the `claude` CLI. That single decision removes the process pool,
-the session-file scraping, and the kill-to-cancel semantics that a
-subprocess-driven bridge is forced into — see
-[ARCHITECTURE §2](docs/ARCHITECTURE.md#2-the-core-decision-sdk-not-subprocess)
-for the mapping, including measurements from the predecessor design that
-motivated it.
+It drives the `claude` CLI (`-p`), **not** the Agent SDK — a deliberate choice,
+because the CLI runs on your Claude Code **subscription** while the SDK would
+force every user onto metered **API** billing. This tool is for individuals who
+already pay for a subscription, so the subprocess approach (and the resident
+process pool that makes it fast) is kept on purpose, not tolerated. See
+[ARCHITECTURE §2](docs/ARCHITECTURE.md#2-the-core-decision-subprocess-deliberately)
+for the tradeoff and the warm/cold latency numbers.
 
-Two interfaces carry the whole system:
+The rewrite's value is **structure**, not mechanism: two interfaces carry the
+whole system, so a new chat platform or a future API-key backend drops in
+without touching anything else.
 
 - **`ChannelAdapter`** — a messaging platform. Knows nothing about agents.
 - **`AgentBackend`** — an agent runtime. Knows nothing about chat platforms.
@@ -39,12 +42,15 @@ nothing else.
 
 ## Design principles
 
-1. **The agent runtime is a dependency, not a subprocess.**
-2. **Permissions are a policy, not a flag.** Write and exec actions ask for
+1. **Billing model decides the mechanism.** The CLI subprocess rides your
+   subscription; the SDK bills per token. Individual users, so: subprocess.
+2. **The subprocess is encapsulated, never exposed.** Exactly one backend knows
+   about processes, PIDs, and session files. The bridge above sees only events.
+3. **Permissions are a policy, not a flag.** Write and exec actions ask for
    confirmation in the chat thread by default. An agent you can reach from your
    phone should not start with unrestricted access to your disk.
-3. **Channel-neutral core.** No platform's vocabulary in a shared signature.
-4. **Degrade explicitly.** Backends declare capabilities; the bridge adapts
+4. **Channel-neutral core.** No platform's vocabulary in a shared signature.
+5. **Degrade explicitly.** Backends declare capabilities; the bridge adapts
    rather than pretending.
 
 ## Security

@@ -20,50 +20,77 @@ that fix cost ~400 lines of process-pool code — spawn, LRU eviction, idle
 reaping, stdin framing, stdout line parsing, orphan cleanup — and each resident
 process holds ~370MB.
 
-That entire layer is **accidental complexity**. It exists only because the
-bridge talks to Claude Code through a terminal interface designed for humans.
+But note what these problems are *about*: they are all about **structure** —
+where code lives, how it is named, what depends on what. **None of them is about
+using a subprocess.** The retrofit was messy because it was a retrofit, not
+because it drove a CLI.
 
 Four structural problems, in the order they hurt:
 
 | # | Problem | Root cause |
 |---|---|---|
-| 1 | Process lifecycle is the application's biggest subsystem | Driving a CLI instead of a library |
-| 2 | Session history read by globbing `~/.claude/projects/*/<id>.jsonl` | No supported read API at the CLI layer |
+| 1 | Process management is ad-hoc and tangled into the bridge | No encapsulation, not "a subprocess exists" |
+| 2 | Session history read by globbing `~/.claude/projects/*/<id>.jsonl` | No read API at the CLI layer |
 | 3 | Provider concepts leak everywhere — types named `Codex*`, config keys named `codexBin` | Retrofit instead of an interface |
 | 4 | One hardcoded chat channel | Channel logic interleaved with agent logic |
 
 ---
 
-## 2. The core decision: SDK, not subprocess
+## 2. The core decision: subprocess, deliberately
 
-`@anthropic-ai/claude-agent-sdk` exposes Claude Code as a library. Every piece
-of the process-pool layer maps to something the SDK already does:
+There are two ways to embed Claude Code. The choice is decided by **who pays**,
+not by which is cleaner code.
 
-| Hand-rolled in the retrofit | Agent SDK equivalent |
+| | Drive the `claude` CLI (`-p`) | `@anthropic-ai/claude-agent-sdk` |
+|---|---|---|
+| Auth | Uses the operator's **Claude Code subscription** login (`claude auth`) | **API key**, per Anthropic's SDK terms — subscription login is not permitted |
+| Cost | Flat monthly fee | **Metered, per token** |
+| Code | A resident-process pool to manage | Library calls; no process pool |
+
+The SDK is the cleaner *code*. But this tool targets **individual users who
+already pay for a Claude Code subscription** — the same kind of user as its
+author. The SDK would force every one of them onto metered API billing for
+something their subscription already covers. That is disqualifying.
+
+**So codex-claude drives the CLI, and keeps the resident-process pool.** The
+pool is not accidental complexity to be deleted — it is the necessary cost of
+riding the subscription, and it is what makes the approach fast. A cold turn
+pays ~4s of Claude Code startup (hooks, plugin sync, MCP, CLAUDE.md discovery);
+a resident process amortizes that to ~250ms of re-init per turn. Measured on the
+predecessor: **~9.3s cold, ~4.1s warm** for a trivial message.
+
+What codex-claude fixes is **structure, not mechanism**. The process pool stays;
+it just moves behind a clean interface, stops leaking provider vocabulary, and
+stops being the only thing the bridge knows how to talk to.
+
+### The pool, encapsulated
+
+Everything the retrofit did ad-hoc becomes one job of one backend:
+
+| Mechanism | Where it lives now |
 |---|---|
-| Resident process pool keyed by session | `query({ prompt: AsyncIterable })` — streaming input mode |
-| `--resume <id>` + respawn on model change | `options.resume` / `options.forkSession` |
-| Idle reaper + LRU cap over ~370MB processes | `startup()` pre-warm; one query object per conversation |
-| Globbing `~/.claude/projects/*/*.jsonl` | `getSessionMessages()`, `listSessions()` |
-| Killing the process to cancel a turn | `query.interrupt()` |
-| Respawn to change model or permission mode | `query.setModel()`, `query.setPermissionMode()` |
-| `--strict-mcp-config` flag plumbing | `options.strictMcpConfig`, `query.toggleMcpServer()` |
-| Parsing `stream-json` lines off stdout | Typed `SDKMessage` async iteration |
+| Resident process keyed by conversation | Inside the `claude-code` `AgentBackend`, nowhere else |
+| `--resume <id>` on continue; respawn on model change | `AgentBackend.run` |
+| Idle reaper + LRU cap over ~370MB processes | Backend-internal; tunable via config |
+| Reading history from `~/.claude/projects/*/*.jsonl` | `AgentBackend.history` — the one place that knows the on-disk format |
+| Killing the process to cancel a turn | `AgentBackend.interrupt` |
+| `--strict-mcp-config` flag plumbing | Backend config, not root config |
+| Parsing `stream-json` lines off stdout | Backend-internal; emits typed `AgentEvent`s upward |
 
-**This deletes a subsystem rather than optimizing one.** Mid-conversation model
-switching stops being a process restart. Cancelling a turn stops being a
-`SIGKILL`. Reading history stops being a filesystem race against a file the
-agent is still appending to.
+The bridge above never sees a process, a PID, or a JSONL path. It sees an
+`AgentBackend` emitting events. **That** is the difference from the retrofit —
+not the absence of a subprocess, but the absence of a subprocess *everywhere*.
 
-### What we give up, honestly
+### Honest cost of this choice
 
-- The SDK is a Node dependency; the CLI approach is language-agnostic. Accepted
-  — the bridge is already TypeScript.
-- Each conversation still holds a live agent in-process, so memory is bounded by
-  concurrent conversations, not total conversations. **The LRU cap and idle
-  reaper survive** — they move from "manage OS processes" to "manage query
-  objects", which is where the accidental complexity ends and the real
-  constraint begins.
+- The SDK's `interrupt()`, `setModel()`, and `getSessionMessages()` are genuinely
+  nicer than kill-and-respawn and JSONL-globbing. We reimplement them because the
+  billing model matters more than the ergonomics. If the target user ever shifts
+  to API-key users, the `AgentBackend` interface lets an SDK-backed
+  implementation drop in without touching the bridge — that is partly why the
+  interface exists.
+- Per-tool permission confirmation is harder over the CLI than the SDK's
+  `canUseTool` callback (see §4.2).
 
 ---
 
@@ -128,9 +155,11 @@ reimplement ordering and back-pressure; an async iterable gets both from the
 language.
 
 `capabilities()` is what keeps the abstraction honest: rather than pretending
-every backend supports interruption and mid-turn model switching, a backend
-declares what it has and the bridge degrades gracefully. This is the check that
-stops `AgentBackend` from silently becoming "whatever Claude Code does".
+every backend supports interruption, mid-turn model switching, or per-tool
+permission prompts, a backend declares what it has and the bridge degrades
+gracefully (see §4.2 — the CLI backend's permission capability depends on whether
+the MCP permission server is running). This is the check that stops
+`AgentBackend` from silently becoming "whatever the CLI happens to do".
 
 ---
 
@@ -156,15 +185,27 @@ The retrofit mapped a Codex sandbox string onto `--permission-mode` and
 defaulted to full access. That is the wrong default for an agent reachable from
 a chat app.
 
+The intended policy:
+
 ```
 default:  read-only tools auto-approved; writes/exec require confirmation
           via a reply in the chat thread
 ```
 
-The SDK's `canUseTool` callback is the hook: it turns a permission request into
-an outbound chat message and awaits the reply. This is the one feature the CLI
-approach genuinely could not do — a subprocess has nowhere to ask.
+Over the CLI this is **harder than it would be with the SDK** and worth being
+honest about. `claude -p` has no per-call callback like the SDK's `canUseTool`.
+Two mechanisms are available, in increasing capability:
 
+1. **Coarse, up-front** — set `--permission-mode` per conversation
+   (`plan` / `default` / `acceptEdits`). Simple, but no per-tool prompt.
+2. **Per-tool via a permission-prompt MCP tool** — `-p` accepts
+   `--permission-prompt-tool mcp__<server>__<tool>`; Claude Code routes each
+   permission request to that tool. The bridge runs a tiny local MCP server
+   whose one tool turns the request into an outbound chat message and blocks on
+   the reply.
+
+Mechanism 2 is the real target; mechanism 1 is the fallback a backend reports
+via `capabilities()` when the MCP permission server is not running.
 `bypassPermissions` stays available per workspace, opt-in, never the default.
 
 ### 4.3 Workspace isolation
@@ -193,9 +234,18 @@ environment, never the config file.
 
 ## 6. Why this is worth building rather than patching
 
-The retrofit can be made fast — it was, and the numbers are in §1. What it
-cannot be made is *small*. Its process pool, its JSONL globbing, and its
-`Codex`-named types are all load-bearing consequences of driving a CLI, and each
-one is a place where the next Claude Code release can break the bridge silently.
+The retrofit already works and is already fast — the warm-path numbers in §2 are
+from it. So the case for a rewrite is not performance, and (given the billing
+constraint in §2) it is not "use the SDK" either. It is **structure**.
 
-Building on the SDK deletes that surface instead of maintaining it.
+In the retrofit, the process pool, the JSONL globbing, the `Codex`-named types,
+and the single hardcoded channel are all tangled together. Adding a second chat
+platform means touching agent code; changing the agent means touching channel
+code; and every file carries a provider's vocabulary it should never have known.
+
+codex-claude keeps the exact mechanism that makes the retrofit work — CLI
+subprocess, resident pool, subscription billing — and puts a clean seam around
+it. A new channel is one directory implementing `ChannelAdapter`. A future
+API-key backend is one class implementing `AgentBackend`. Neither reaches across
+the seam. That separation is the whole product; the subprocess underneath is
+deliberately unchanged.
