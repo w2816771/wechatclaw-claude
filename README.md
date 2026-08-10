@@ -1,79 +1,104 @@
-# codex-claude
+# wechatclaw-claude
 
 Talk to [Claude Code](https://code.claude.com) running on your own machine, from
-whatever chat app you already have open.
-
-> **Status: design stage.** The architecture is settled and written up in
-> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Implementation has not started.
-
-## What it is
-
-A local bridge. It runs on your machine, connects to a messaging platform, and
-routes messages to a Claude Code agent working in a directory you nominate.
+a chat app — on your **existing Claude Code subscription**, not a metered API
+bill.
 
 ```
-   your phone  ──►  chat platform  ──►  codex-claude  ──►  Claude Code
-                                        (localhost)        (your files)
+   your chat app  ──►  wechatclaw-claude  ──►  Claude Code  ──►  your files
+                        (localhost)             (your login)
 ```
 
 Nothing is hosted. The service binds to loopback, your files stay on your
-machine, and it runs on **your existing Claude Code subscription** — no
-per-token API bill.
+machine, and it runs on the Claude Code login you already have.
 
-## Design in one page
+## Status
 
-It drives the `claude` CLI (`-p`), **not** the Agent SDK — a deliberate choice,
-because the CLI runs on your Claude Code **subscription** while the SDK would
-force every user onto metered **API** billing. This tool is for individuals who
-already pay for a subscription, so the subprocess approach (and the resident
-process pool that makes it fast) is kept on purpose, not tolerated. See
-[ARCHITECTURE §2](docs/ARCHITECTURE.md#2-the-core-decision-subprocess-deliberately)
-for the tradeoff and the warm/cold latency numbers.
+**v0.1 — runnable core.** The agent backend, the bridge, config, the setup
+wizard, and a **terminal channel** all work today and are covered by tests. The
+**WeChat channel is a stub** — see [Why WeChat is a stub](#why-wechat-is-a-stub).
 
-The rewrite's value is **structure**, not mechanism: two interfaces carry the
-whole system, so a new chat platform or a future API-key backend drops in
-without touching anything else.
+## Quickstart
 
-First run walks you through the choices that have no safe default — which
-directories the agent may touch, and who is allowed to message it — via
-`codex-claude init`. It runs once, writes a config you can hand-edit, and never
-re-asks on upgrade. See
-[ARCHITECTURE §5](docs/ARCHITECTURE.md#5-setup-the-confirm-before-run-wizard).
+Requires Node ≥ 22 and Claude Code installed and logged in (`claude auth`).
 
-- **`ChannelAdapter`** — a messaging platform. Knows nothing about agents.
+```bash
+npm install
+npm run build
+node dist/cli.js init     # set workspace, allowlist, permissions
+node dist/cli.js start    # then type at the prompt
+```
+
+`init` walks you through the choices that have **no safe default** — which
+directory the agent may touch, and who is allowed to message it — and writes a
+config you can hand-edit. It never re-asks on upgrade.
+
+`start` with the terminal channel drops you at a `you ›` prompt; replies stream
+back as `claude ›`. That is the whole pipe — channel → bridge → agent → back —
+running end to end with no external account.
+
+## How it's built
+
+It drives the `claude` CLI (`-p`), **not** the Agent SDK — deliberately, because
+the CLI runs on your **subscription** while the SDK would force every user onto
+metered **API** billing. This tool is for individuals who already pay for a
+subscription. See
+[ARCHITECTURE §2](docs/ARCHITECTURE.md#2-the-core-decision-subprocess-deliberately).
+
+Two interfaces carry the whole system, so a new chat platform or a future
+API-key backend drops in without touching anything else:
+
 - **`AgentBackend`** — an agent runtime. Knows nothing about chat platforms.
+  The shipped one keeps a resident `claude` process per conversation (a cold
+  turn pays ~4s of Claude Code startup; a warm one ~250ms).
+- **`ChannelAdapter`** — a messaging platform. Knows nothing about agents.
 
-Adding a channel means implementing one interface, in one directory, touching
-nothing else.
+```
+src/
+  agent/        AgentBackend interface + the claude-code resident-pool backend
+  channel/      ChannelAdapter interface + terminal channel + wechat stub
+  config.ts     schema, validation, workspace containment check
+  bridge.ts     routing, access control, adaptive reply streaming
+  cli.ts        init wizard + start
+```
 
 ## Design principles
 
-1. **Billing model decides the mechanism.** The CLI subprocess rides your
+1. **Billing model decides the mechanism.** CLI subprocess rides your
    subscription; the SDK bills per token. Individual users, so: subprocess.
 2. **The subprocess is encapsulated, never exposed.** Exactly one backend knows
-   about processes, PIDs, and session files. The bridge above sees only events.
-3. **Permissions are a policy, not a flag.** Write and exec actions ask for
-   confirmation in the chat thread by default. An agent you can reach from your
-   phone should not start with unrestricted access to your disk.
+   about processes, PIDs, and session files. The bridge sees only events.
+3. **Permissions are a policy, not a flag.** Default is `acceptEdits` (edit
+   files in the workspace); read-only `plan` and full-access `bypassPermissions`
+   are opt-in — the latter needs a typed confirmation in the wizard.
 4. **Channel-neutral core.** No platform's vocabulary in a shared signature.
-5. **Degrade explicitly.** Backends declare capabilities; the bridge adapts
-   rather than pretending.
+
+## Why WeChat is a stub
+
+Automating a personal WeChat account means driving reverse-engineered,
+undocumented endpoints, and it violates Tencent's Terms of Service — it can get
+the account banned. That integration is the operator's to supply, on their own
+account and their own risk; this project does not ship or redistribute it.
+[`src/channel/wechat.ts`](src/channel/wechat.ts) is the interface to implement;
+everything above the `ChannelAdapter` seam already works, exercised by the
+terminal channel.
 
 ## Security
 
-- Loopback-bound; no inbound port is opened to a network.
-- Sender allowlist is deny-by-default — an unknown sender is refused until
-  explicitly paired.
-- Workspace paths are containment-checked in the bridge, independently of
-  whatever sandboxing the agent applies.
-- Secrets are read from the environment. Never commit a config file with
-  credentials in it.
+- Loopback-bound; no inbound network port is opened.
+- Sender allowlist is deny-by-default — an unknown sender is refused.
+- Workspace paths are containment-checked in the bridge, independently of the
+  agent's own sandboxing.
+- Secrets are read from the environment, never written to the config file.
 
-## Contributing
+## Development
 
-Discussion of the architecture is welcome before code exists — that is the
-cheapest time to change it. Open an issue.
+```bash
+npm run typecheck
+npm test          # 18 tests: backend, streaming, resident pool, config
+npm run dev       # run the CLI from source via tsx
+```
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

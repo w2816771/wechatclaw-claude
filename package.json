@@ -1,0 +1,39 @@
+{
+  "name": "wechatclaw-claude",
+  "version": "0.1.0",
+  "description": "Talk to Claude Code running on your own machine, from a chat app — on your existing subscription.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "wechatclaw-claude": "dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "docs/",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test --import tsx test/*.test.ts"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "chat",
+    "bridge",
+    "wechat",
+    "agent"
+  ],
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.3"
+  }
+}

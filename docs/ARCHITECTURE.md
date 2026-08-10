@@ -1,4 +1,4 @@
-# codex-claude — Architecture
+# wechatclaw-claude — Architecture
 
 A chat-channel bridge for Claude Code: talk to an agent running on your own
 machine, from whatever messaging app you already use.
@@ -52,14 +52,14 @@ already pay for a Claude Code subscription** — the same kind of user as its
 author. The SDK would force every one of them onto metered API billing for
 something their subscription already covers. That is disqualifying.
 
-**So codex-claude drives the CLI, and keeps the resident-process pool.** The
+**So wechatclaw-claude drives the CLI, and keeps the resident-process pool.** The
 pool is not accidental complexity to be deleted — it is the necessary cost of
 riding the subscription, and it is what makes the approach fast. A cold turn
 pays ~4s of Claude Code startup (hooks, plugin sync, MCP, CLAUDE.md discovery);
 a resident process amortizes that to ~250ms of re-init per turn. Measured on the
 predecessor: **~9.3s cold, ~4.1s warm** for a trivial message.
 
-What codex-claude fixes is **structure, not mechanism**. The process pool stays;
+What wechatclaw-claude fixes is **structure, not mechanism**. The process pool stays;
 it just moves behind a clean interface, stops leaking provider vocabulary, and
 stops being the only thing the bridge knows how to talk to.
 
@@ -231,7 +231,7 @@ operator to state them out loud before anything runs.
 
 Two rules on *when* it runs, both deliberate:
 
-- **First run, or explicit `codex-claude init` — never every install.** The
+- **First run, or explicit `wechatclaw-claude init` — never every install.** The
   service, started with no config, runs the wizard once and writes the result.
   Re-running is opt-in. **Upgrades never re-ask** — a new version reads the
   existing config, and only prompts for a genuinely new required field.
@@ -298,7 +298,7 @@ and the single hardcoded channel are all tangled together. Adding a second chat
 platform means touching agent code; changing the agent means touching channel
 code; and every file carries a provider's vocabulary it should never have known.
 
-codex-claude keeps the exact mechanism that makes the retrofit work — CLI
+wechatclaw-claude keeps the exact mechanism that makes the retrofit work — CLI
 subprocess, resident pool, subscription billing — and puts a clean seam around
 it. A new channel is one directory implementing `ChannelAdapter`. A future
 API-key backend is one class implementing `AgentBackend`. Neither reaches across
