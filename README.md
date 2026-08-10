@@ -1,5 +1,7 @@
 # wechatclaw-claude
 
+**English** · [中文](README.zh-CN.md)
+
 Talk to [Claude Code](https://code.claude.com) running on your own machine, from
 a chat app — on your **existing Claude Code subscription**, not a metered API
 bill.
