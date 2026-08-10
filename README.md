@@ -101,6 +101,27 @@ npm test          # 18 tests: backend, streaming, resident pool, config
 npm run dev       # run the CLI from source via tsx
 ```
 
+## Credits
+
+This project follows the implementation of
+[XavierJiezou/codex-weixin](https://github.com/XavierJiezou/codex-weixin) (MIT) —
+a bridge from personal WeChat to a local Codex. The whole "bridge a chat account
+to a local agent" idea comes from it, and several key parts of
+`agent/claude-code.ts` are adapted from its code:
+
+- **Finding and launching the CLI** — on Windows, prefer the native exe, fall
+  back to the `.cmd` shim (via `cmd.exe`), run `.js` through node. Adapted from
+  its `resolveCodexCommand`.
+- **Parsing stream-json output** — reading JSON line by line, pulling out the
+  final text and session id. Adapted from its `parseCodexExecOutput`.
+- **The resident-process protocol** — feeding turns over stdin, reading replies
+  off stdout, `windowsHide`, and the overall shape of driving the CLI.
+
+What changed: this reworks it into a resident-process **pool** (start once, reuse
+across turns), hides all of it behind the `AgentBackend` interface, and cleanly
+separates the agent from the chat channel. The **WeChat integration code is not
+copied** (see [Why WeChat is a stub](#why-wechat-is-a-stub)).
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

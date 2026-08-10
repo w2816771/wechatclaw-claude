@@ -80,6 +80,23 @@ npm test            # 18 个测试
 npm run dev         # 不编译,直接从源码跑
 ```
 
+## 致谢与参考
+
+本项目参考了 [XavierJiezou/codex-weixin](https://github.com/XavierJiezou/codex-weixin)
+(MIT 许可)—— 一个把个人微信接到本地 Codex 的项目。整个「把聊天账号接到本地 agent」
+的思路来自它,`agent/claude-code.ts` 里有几处关键逻辑是照着它改的:
+
+- **怎么找到并启动命令行工具** —— Windows 上优先用原生 exe、退回 `.cmd`(得经 `cmd.exe`)、
+  `.js` 用 node 跑。改自它的 `resolveCodexCommand`。
+- **解析 stream-json 输出** —— 一行行读 JSON,抽出正文和会话 id。改自它的
+  `parseCodexExecOutput`。
+- **常驻进程的通信方式** —— 用 stdin 喂消息、从 stdout 读回复,以及 `windowsHide`
+  隐藏窗口、整体驱动命令行的做法。
+
+改了什么:这里把它做成常驻进程**池**(启动一次、多轮复用),再把这些细节全部藏到
+`AgentBackend` 接口后面,让 agent 和聊天渠道彻底分开。**微信那部分的代码没有照抄**
+(原因见[「为什么微信还用不了」](#为什么微信还用不了))。
+
 ## 许可证
 
 MIT —— 见 [LICENSE](LICENSE)。随便用。
