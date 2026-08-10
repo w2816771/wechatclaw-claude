@@ -17,8 +17,9 @@ machine, and it runs on the Claude Code login you already have.
 ## Status
 
 **v0.1 — runnable core.** The agent backend, the bridge, config, the setup
-wizard, and a **terminal channel** all work today and are covered by tests. The
-**WeChat channel is a stub** — see [WeChat support](#wechat-support).
+wizard, a **terminal channel**, and an **OpenAI-compatible `serve` endpoint** all
+work today and are covered by tests. WeChat runs through OpenClaw pointed at that
+endpoint — see [WeChat via OpenClaw](#wechat-via-openclaw).
 
 ## Quickstart
 
@@ -59,9 +60,10 @@ API-key backend drops in without touching anything else:
 src/
   agent/        AgentBackend interface + the claude-code resident-pool backend
   channel/      ChannelAdapter interface + terminal channel + wechat stub
+  server/       OpenAI-compatible endpoint (for OpenClaw etc.)
   config.ts     schema, validation, workspace containment check
   bridge.ts     routing, access control, adaptive reply streaming
-  cli.ts        init wizard + start
+  cli.ts        init wizard + start + serve
 ```
 
 ## Design principles
@@ -75,18 +77,48 @@ src/
    are opt-in — the latter needs a typed confirmation in the wizard.
 4. **Channel-neutral core.** No platform's vocabulary in a shared signature.
 
-## WeChat support
+## WeChat via OpenClaw
 
-WeChat integration is planned through the **official** OpenClaw Weixin channel —
-Tencent's sanctioned plugin for connecting AI agents (in WeChat: 我 → 设置 →
-插件 → ClawBot, authorized by OAuth QR code). It installs via the official
-[`@tencent-weixin/openclaw-weixin-cli`](https://www.npmjs.com/package/@tencent-weixin/openclaw-weixin-cli)
-package — **no reverse-engineered protocols, no personal-account automation, no
-ban risk**.
+WeChat goes through [OpenClaw](https://github.com/openclaw/openclaw) — a local
+gateway that owns the chat channels — with wechatclaw-claude as the **model**
+behind it. OpenClaw handles WeChat through Tencent's **official** Weixin plugin
+(in WeChat: 我 → 设置 → 插件 → ClawBot, OAuth QR — no reverse-engineering, no ban
+risk); for each message it calls this project's OpenAI-compatible endpoint, which
+runs Claude Code on your subscription and streams the reply back.
 
-It is currently a stub: [`src/channel/wechat.ts`](src/channel/wechat.ts) is the
-`ChannelAdapter` to wire to that plugin. Everything above the seam already
-works, exercised by the terminal channel.
+```
+WeChat ──► OpenClaw (official Weixin plugin) ──► wechatclaw-claude serve ──► Claude Code
+```
+
+The same `serve` endpoint works for any OpenAI-compatible frontend, so this also
+gets you Claude-on-subscription for OpenClaw's other 30+ channels (Telegram,
+Slack, …).
+
+**Setup:**
+
+```bash
+# 1. Start the model endpoint (this project) — verified working
+node dist/cli.js serve                    # → http://127.0.0.1:8760/v1
+
+# 2. Install OpenClaw + the official WeChat plugin, then scan the QR (your phone)
+npm install -g openclaw
+openclaw onboard --install-daemon
+npx -y @tencent-weixin/openclaw-weixin-cli install
+openclaw channels login --channel openclaw-weixin
+
+# 3. Point OpenClaw's model provider at the serve endpoint (base URL above,
+#    OpenAI-compatible). Confirm the exact provider-config fields for your
+#    OpenClaw version in its model-provider docs.
+```
+
+Step 1 is tested end-to-end (streaming + multi-turn) against Claude Code. Steps
+2–3 run on your machine — the QR scan is yours to do, and the OpenClaw
+provider-config field names should be confirmed against your installed version.
+
+> Note: OpenClaw is a gateway that routes each channel message to a model, so the
+> integration point is this OpenAI endpoint — not a `ChannelAdapter`.
+> [`src/channel/wechat.ts`](src/channel/wechat.ts) stays only as a stub for a
+> hypothetical *direct* WeChat adapter, which is not the recommended path.
 
 ## Security
 
@@ -100,7 +132,7 @@ works, exercised by the terminal channel.
 
 ```bash
 npm run typecheck
-npm test          # 18 tests: backend, streaming, resident pool, config
+npm test          # 24 tests: backend, streaming, resident pool, config, OpenAI server
 npm run dev       # run the CLI from source via tsx
 ```
 
@@ -124,7 +156,7 @@ What changed: this reworks it into a resident-process **pool** (start once, reus
 across turns), hides all of it behind the `AgentBackend` interface, and cleanly
 separates the agent from the chat channel. The **WeChat integration is not
 copied from it** — that goes through the official OpenClaw Weixin channel instead
-(see [WeChat support](#wechat-support)).
+(see [WeChat via OpenClaw](#wechat-via-openclaw)).
 
 ## License
 

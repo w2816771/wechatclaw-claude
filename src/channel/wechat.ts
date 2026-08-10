@@ -7,18 +7,17 @@ import type {
 } from "./types.js";
 
 /**
- * WeChat channel — a stub, to be wired to the official OpenClaw Weixin channel.
+ * WeChat channel — a stub, and NOT the recommended path for WeChat.
  *
- * Integration goes through Tencent's sanctioned agent plugin, installed via
- * `@tencent-weixin/openclaw-weixin-cli` and authorized in-app (WeChat → 设置 →
- * 插件 → ClawBot) with an OAuth QR code. No reverse-engineered protocols, no
- * personal-account automation — so nothing here risks a ban or redistributes
- * someone else's endpoints.
+ * WeChat runs through OpenClaw, which is a gateway that routes each channel
+ * message to a *model* — so the real integration point is the OpenAI-compatible
+ * `serve` endpoint (see src/server/openai.ts and the "WeChat via OpenClaw"
+ * section of the README), not a ChannelAdapter. OpenClaw owns the official
+ * Weixin plugin (OAuth QR, no reverse-engineering); we are the model it calls.
  *
- * To implement: install/attach the OpenClaw Weixin plugin, call `sink(...)` for
- * each inbound message, and fulfill `send()` against it. Everything above the
- * ChannelAdapter seam — routing, access control, reply streaming — already
- * works and is exercised by the terminal channel.
+ * This stub remains only for a hypothetical *direct* WeChat ChannelAdapter
+ * (bypassing OpenClaw). If you build that, call `sink(...)` for each inbound
+ * message and fulfill `send()` — everything above the seam already works.
  */
 export class WeChatChannel implements ChannelAdapter {
   readonly id = "wechat";

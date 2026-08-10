@@ -16,8 +16,9 @@
 
 **v0.1,能跑,但还简陋。**
 
-- ✅ **在电脑终端(黑框框)里直接跟 Claude 打字聊天** —— 这个现在就能用。
-- 🚧 **微信还不能用** —— 走 OpenClaw 官方渠道,见下面[「微信怎么接」](#微信怎么接)。
+- ✅ **在电脑终端(黑框框)里直接跟 Claude 打字聊天** —— 现在就能用。
+- ✅ **一个 OpenAI 兼容接口(`serve`)** —— 现在就能用,已测通。
+- 🚧 **微信** —— 通过 OpenClaw 接那个接口来跑,见下面[「微信怎么接」](#微信怎么接)。
 
 ## 怎么用
 
@@ -43,13 +44,40 @@ node dist/cli.js start    # 启动,然后就能打字聊天了
 
 ## 微信怎么接
 
-微信这块走的是 **OpenClaw 官方微信渠道** —— 腾讯开放给 AI agent 的正规插件(在微信里:
-我 → 设置 → 插件 → ClawBot,用 OAuth 扫码授权)。它通过官方的
-[`@tencent-weixin/openclaw-weixin-cli`](https://www.npmjs.com/package/@tencent-weixin/openclaw-weixin-cli)
-包安装 —— **不逆向、不碰个人号协议、不担心封号。**
+微信这块走 [OpenClaw](https://github.com/openclaw/openclaw)——一个本地网关,由它管
+聊天渠道,我们这个项目当它背后的**"模型"**。OpenClaw 用腾讯**官方**微信插件收发消息
+(在微信里:我 → 设置 → 插件 → ClawBot,OAuth 扫码,不逆向、不封号);每来一条消息,
+它就调我们的 OpenAI 兼容接口,我们用你的订阅版 Claude 跑一遍再把回复流式发回去。
 
-现在还是个桩:[`src/channel/wechat.ts`](src/channel/wechat.ts) 就是要对接这个插件的地方。
-除了微信这一层,别的(消息路由、谁能用、回复怎么发)都已经做好并且验证过了。
+```
+微信 ──► OpenClaw(官方微信插件)──► wechatclaw-claude serve ──► Claude Code
+```
+
+同一个 `serve` 接口对任何 OpenAI 兼容的前端都能用,所以 OpenClaw 支持的另外 30 多个
+渠道(Telegram、Slack…)也顺带能用上你订阅版的 Claude。
+
+**怎么搭:**
+
+```bash
+# 1. 启动模型接口(本项目)—— 已测通
+node dist/cli.js serve                    # → http://127.0.0.1:8760/v1
+
+# 2. 装 OpenClaw + 官方微信插件,然后手机扫码
+npm install -g openclaw
+openclaw onboard --install-daemon
+npx -y @tencent-weixin/openclaw-weixin-cli install
+openclaw channels login --channel openclaw-weixin
+
+# 3. 把 OpenClaw 的模型提供方指向上面那个接口(OpenAI 兼容)。
+#    具体配置字段名请对照你装的 OpenClaw 版本的模型文档确认。
+```
+
+第 1 步我已经端到端测通(流式 + 多轮)。第 2、3 步在你机器上跑——扫码得你自己来,
+OpenClaw 那边配置字段也请对着你装的版本确认一下。
+
+> 说明:OpenClaw 是把每条渠道消息路由给一个模型的网关,所以对接点是这个 OpenAI 接口,
+> **不是** `ChannelAdapter`。[`src/channel/wechat.ts`](src/channel/wechat.ts) 只是留作
+> 一个"直连微信适配器"的桩,不是推荐路线。
 
 ## 安全上做了什么
 
@@ -69,14 +97,15 @@ node dist/cli.js start    # 启动,然后就能打字聊天了
 src/
   agent/    跟 Claude 打交道的后端(给每个会话常驻一个进程,省启动时间)
   channel/  聊天渠道(终端能用,微信是桩)
+  server/   OpenAI 兼容接口(给 OpenClaw 等用)
   config.ts 配置、校验、文件夹越界检查
   bridge.ts 把消息在渠道和 agent 之间来回转
-  cli.ts    init 向导 + start 启动
+  cli.ts    init 向导 + start 启动 + serve
 ```
 
 ```bash
 npm run typecheck   # 类型检查
-npm test            # 18 个测试
+npm test            # 24 个测试
 npm run dev         # 不编译,直接从源码跑
 ```
 

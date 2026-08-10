@@ -10,6 +10,7 @@ import { Bridge } from "./bridge.js";
 import { TerminalChannel } from "./channel/terminal.js";
 import { WeChatChannel } from "./channel/wechat.js";
 import type { ChannelAdapter } from "./channel/types.js";
+import { createOpenAIServer } from "./server/openai.js";
 import {
   defaultConfig,
   defaultConfigPath,
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
   const command = process.argv[2];
   if (command === "-h" || command === "--help") return printHelp();
   if (command === "init") return void (await runInit());
+  if (command === "serve") return void (await runServe());
   if (command === "start" || command === undefined) return void (await runStart());
   console.error(`Unknown command: ${command}`);
   printHelp();
@@ -40,8 +42,10 @@ function printHelp(): void {
       "Usage:",
       "  wechatclaw-claude init     Set up config (workspace, allowlist, permissions)",
       "  wechatclaw-claude start    Start the bridge (default when config exists)",
+      "  wechatclaw-claude serve    Start an OpenAI-compatible server (for OpenClaw etc.)",
       "  wechatclaw-claude --help    Show this help",
       "",
+      "serve env vars: WCC_HOST (127.0.0.1), WCC_PORT (8760), WCC_API_KEY (optional)",
       `Config: ${defaultConfigPath()}`,
       "",
     ].join("\n"),
@@ -82,6 +86,52 @@ async function runStart(): Promise<void> {
 
 function buildChannel(config: Config): ChannelAdapter {
   return config.channel === "wechat" ? new WeChatChannel() : new TerminalChannel();
+}
+
+async function runServe(): Promise<void> {
+  const configPath = defaultConfigPath();
+  if (!fs.existsSync(configPath)) {
+    process.stdout.write("No config found — running setup first.\n\n");
+    await runInit();
+    return;
+  }
+  const config = loadConfig(configPath);
+  const backend = new ClaudeCodeBackend({
+    claudeBin: config.claudeBin,
+    permissionMode: config.permissionMode,
+    idleTimeoutMs: config.idleTimeoutMs,
+    maxResident: config.maxResident,
+    enableMcpServers: config.enableMcpServers,
+  });
+
+  const host = process.env.WCC_HOST ?? "127.0.0.1";
+  const port = Number(process.env.WCC_PORT ?? "8760");
+  const apiKey = process.env.WCC_API_KEY || undefined;
+
+  const server = createOpenAIServer({
+    backend,
+    cwd: config.defaultWorkspace,
+    model: config.model,
+    apiKey,
+    host,
+    port,
+  });
+
+  const shutdown = (): void => {
+    server.close();
+    void backend.dispose().finally(() => process.exit(0));
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+
+  server.listen(port, host, () => {
+    process.stdout.write(
+      `OpenAI-compatible server up at http://${host}:${port}/v1\n` +
+        `  workspace: ${config.defaultWorkspace}\n` +
+        `  auth:      ${apiKey ? "Bearer token required (WCC_API_KEY)" : "none (loopback only)"}\n` +
+        "Point OpenClaw's model provider at this URL. Ctrl+C to quit.\n",
+    );
+  });
 }
 
 async function runInit(): Promise<void> {
