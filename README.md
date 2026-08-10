@@ -34,6 +34,12 @@ The rewrite's value is **structure**, not mechanism: two interfaces carry the
 whole system, so a new chat platform or a future API-key backend drops in
 without touching anything else.
 
+First run walks you through the choices that have no safe default — which
+directories the agent may touch, and who is allowed to message it — via
+`codex-claude init`. It runs once, writes a config you can hand-edit, and never
+re-asks on upgrade. See
+[ARCHITECTURE §5](docs/ARCHITECTURE.md#5-setup-the-confirm-before-run-wizard).
+
 - **`ChannelAdapter`** — a messaging platform. Knows nothing about agents.
 - **`AgentBackend`** — an agent runtime. Knows nothing about chat platforms.
 

@@ -222,17 +222,72 @@ environment, never the config file.
 
 ---
 
-## 5. Non-goals
+## 5. Setup: the confirm-before-run wizard
+
+The config in §4.4 has a few choices with **no safe default** — the two most
+important are security-critical: which directories the agent may touch, and who
+is allowed to talk to it. The install must not invent those. A wizard forces the
+operator to state them out loud before anything runs.
+
+Two rules on *when* it runs, both deliberate:
+
+- **First run, or explicit `codex-claude init` — never every install.** The
+  service, started with no config, runs the wizard once and writes the result.
+  Re-running is opt-in. **Upgrades never re-ask** — a new version reads the
+  existing config, and only prompts for a genuinely new required field.
+- **Not an npm `postinstall` hook.** Interactive prompts in install scripts
+  break CI, `npm ci`, and any non-TTY install. Setup is its own command the
+  operator runs on purpose.
+
+The wizard is the interactive front-end to the config schema and the security
+model — nothing more. It groups steps by whether a safe default exists:
+
+**No safe default — a real prompt, not skippable:**
+
+| Step | Why it can't default |
+|---|---|
+| Workspace root(s) | Absolute paths the agent may read/write. Blank = the tool does nothing; a wrong guess = it can touch the wrong files. Containment (§4.3) is enforced against exactly these. |
+| Sender allowlist | At least one paired sender, or the deny-by-default gate refuses everyone. "Allow anyone" is never a default. |
+
+**Safe default — shown, `Enter` to accept:**
+
+- Permission policy — default: confirm writes/exec (§4.2). Choosing
+  `bypassPermissions` requires a **typed** confirmation (retype the workspace
+  path), not a `y/N` — an unrestricted agent reachable from a phone should cost
+  a deliberate keystroke.
+- Model, idle timeout, max resident processes — sensible defaults, editable.
+- Which channel(s) to enable.
+
+**Secrets never touch the config file.** Channel tokens are prompted, then
+written to a gitignored `.env` (or the OS keychain where available) and
+referenced from config by env-var name. The config file itself stays safe to
+read and, with paths redacted, safe to share when reporting a bug.
+
+**Pre-flight, before writing anything.** The wizard verifies the premise of §2
+up front, so a misconfiguration surfaces here rather than on the first message:
+
+- `claude --version` resolves → else point the user at the install docs.
+- `claude` is logged in (subscription auth present) → else stop and explain,
+  because the whole subscription-billing model depends on it. This is the one
+  place to catch "not logged in" cleanly.
+
+It ends by writing the config, printing **what** it wrote and **where**, and
+saying how to re-run. Idempotent: a second `init` shows current values as the
+defaults, so it doubles as an editor.
+
+---
+
+## 6. Non-goals
 
 - **Not a hosted service.** Binds loopback only. Anything else is the user's
   reverse proxy and their threat model.
 - **Not multi-tenant.** One operator, their machine, their workspaces.
-- **Not a Claude Code reimplementation.** Skills, subagents, and MCP are the
-  SDK's job; the bridge only routes.
+- **Not a Claude Code reimplementation.** Skills, subagents, and MCP are Claude
+  Code's job; the bridge only routes to it.
 
 ---
 
-## 6. Why this is worth building rather than patching
+## 7. Why this is worth building rather than patching
 
 The retrofit already works and is already fast — the warm-path numbers in §2 are
 from it. So the case for a rewrite is not performance, and (given the billing
