@@ -29,7 +29,7 @@ async function main(): Promise<void> {
   if (command === "init") return void (await runInit());
   if (command === "serve") return void (await runServe());
   if (command === "start" || command === undefined) return void (await runStart());
-  console.error(`Unknown command: ${command}`);
+  console.error(`未知命令:${command}`);
   printHelp();
   process.exitCode = 1;
 }
@@ -37,16 +37,16 @@ async function main(): Promise<void> {
 function printHelp(): void {
   process.stdout.write(
     [
-      "wechatclaw-claude — talk to Claude Code from a chat app, on your subscription",
+      "wechatclaw-claude —— 从聊天应用连你自己电脑上的 Claude Code,用你的订阅",
       "",
-      "Usage:",
-      "  wechatclaw-claude init     Set up config (workspace, allowlist, permissions)",
-      "  wechatclaw-claude start    Start the bridge (default when config exists)",
-      "  wechatclaw-claude serve    Start an OpenAI-compatible server (for OpenClaw etc.)",
-      "  wechatclaw-claude --help    Show this help",
+      "用法:",
+      "  wechatclaw-claude init     初始化配置(工作目录、白名单、权限)",
+      "  wechatclaw-claude start    启动桥接(有配置时的默认命令)",
+      "  wechatclaw-claude serve    启动 OpenAI 兼容服务(给 OpenClaw 等用)",
+      "  wechatclaw-claude --help    显示本帮助",
       "",
-      "serve env vars: WCC_HOST (127.0.0.1), WCC_PORT (8760), WCC_API_KEY (optional)",
-      `Config: ${defaultConfigPath()}`,
+      "serve 环境变量:WCC_HOST(127.0.0.1)、WCC_PORT(8760)、WCC_API_KEY(可选)",
+      `配置文件:${defaultConfigPath()}`,
       "",
     ].join("\n"),
   );
@@ -55,7 +55,7 @@ function printHelp(): void {
 async function runStart(): Promise<void> {
   const configPath = defaultConfigPath();
   if (!fs.existsSync(configPath)) {
-    process.stdout.write("No config found — running setup first.\n\n");
+    process.stdout.write("没找到配置 —— 先跑一遍初始化。\n\n");
     await runInit();
     return;
   }
@@ -78,8 +78,8 @@ async function runStart(): Promise<void> {
   process.on("SIGTERM", () => void shutdown());
 
   process.stdout.write(
-    `Bridge up — channel: ${config.channel}, workspace: ${config.defaultWorkspace}\n` +
-      (config.channel === "terminal" ? "Type a message. Ctrl+C to quit.\n" : ""),
+    `桥接已启动 —— 渠道:${config.channel},工作目录:${config.defaultWorkspace}\n` +
+      (config.channel === "terminal" ? "直接打字发消息。Ctrl+C 退出。\n" : ""),
   );
   await bridge.start();
 }
@@ -91,7 +91,7 @@ function buildChannel(config: Config): ChannelAdapter {
 async function runServe(): Promise<void> {
   const configPath = defaultConfigPath();
   if (!fs.existsSync(configPath)) {
-    process.stdout.write("No config found — running setup first.\n\n");
+    process.stdout.write("没找到配置 —— 先跑一遍初始化。\n\n");
     await runInit();
     return;
   }
@@ -126,15 +126,15 @@ async function runServe(): Promise<void> {
 
   server.listen(port, host, () => {
     process.stdout.write(
-      `OpenAI-compatible server up at http://${host}:${port}/v1\n` +
-        `  workspace: ${config.defaultWorkspace}\n` +
-        `  auth:      ${apiKey ? "Bearer token required (WCC_API_KEY)" : "none (loopback only)"}\n` +
-        "Point OpenClaw's model provider at this URL. Ctrl+C to quit.\n",
+      `OpenAI 兼容服务已启动:http://${host}:${port}/v1\n` +
+        `  工作目录:${config.defaultWorkspace}\n` +
+        `  鉴权:    ${apiKey ? "需要 Bearer 令牌(WCC_API_KEY)" : "无(仅限本地回环)"}\n` +
+        "把 OpenClaw 的模型提供方指向这个地址。Ctrl+C 退出。\n",
     );
-    // Pre-warm the default conversation so the first message skips Claude's
-    // ~3.5s cold start. Set WCC_NO_PREWARM=1 to disable.
+    // 预热默认会话,让第一条消息跳过 Claude 约 3.5 秒的冷启动。
+    // 设 WCC_NO_PREWARM=1 可关闭。
     if (process.env.WCC_NO_PREWARM !== "1") {
-      process.stdout.write("Pre-warming Claude Code (~6s) — send your first message after that for a fast reply.\n");
+      process.stdout.write("正在预热 Claude Code(约 6 秒)—— 等它热好再发第一条消息,回复才快。\n");
       backend.warm("default", config.defaultWorkspace, config.model);
     }
   });
@@ -148,31 +148,31 @@ async function runInit(): Promise<void> {
     });
 
   try {
-    process.stdout.write("wechatclaw-claude setup\n\n");
+    process.stdout.write("wechatclaw-claude 初始化\n\n");
 
-    // Pre-flight: the whole subscription-billing premise depends on this.
+    // 预检:整个「用订阅计费」的前提全靠这一步。
     await preflight();
 
     const existing = readExisting();
 
-    // No safe default: workspace root.
+    // 没有安全默认值:工作目录。
     let workspace = "";
     while (!workspace) {
       const answer = await ask(
-        "Workspace directory the agent may read/write:",
+        "允许 agent 读写的工作目录:",
         existing?.defaultWorkspace ?? process.cwd(),
       );
       const resolved = path.resolve(answer);
       if (!fs.existsSync(resolved)) {
-        process.stdout.write(`  ${resolved} does not exist — pick an existing directory.\n`);
+        process.stdout.write(`  ${resolved} 不存在 —— 请选一个已有的目录。\n`);
         continue;
       }
       workspace = resolved;
     }
 
-    // No safe default: who may talk to it. Terminal defaults to "operator".
+    // 没有安全默认值:谁能跟它说话。终端渠道默认 "operator"。
     const sendersInput = await ask(
-      "Allowed sender ids (comma-separated):",
+      "允许的发送者 id(逗号分隔):",
       existing?.allowedSenders.join(",") ?? "operator",
     );
     const allowedSenders = sendersInput
@@ -180,12 +180,12 @@ async function runInit(): Promise<void> {
       .map((s) => s.trim())
       .filter(Boolean);
 
-    // Safe default: permission policy.
+    // 有安全默认值:权限策略。
     process.stdout.write(
-      "\nPermission mode:\n" +
-        "  plan            read-only (safest)\n" +
-        "  acceptEdits     edit files in the workspace (default)\n" +
-        "  bypassPermissions  full access incl. shell (opt-in)\n",
+      "\n权限模式:\n" +
+        "  plan               只读(最安全)\n" +
+        "  acceptEdits        可改工作目录内的文件(默认)\n" +
+        "  bypassPermissions  完全权限,含执行命令(需手动选)\n",
     );
     const permissionMode = await pickPermissionMode(ask, workspace, existing?.permissionMode ?? "acceptEdits");
 
@@ -197,19 +197,19 @@ async function runInit(): Promise<void> {
       permissionMode,
       channel: "terminal",
     };
-    validateConfig(config); // fail loudly before writing
+    validateConfig(config); // 写盘前先大声报错
 
     const configPath = defaultConfigPath();
     saveConfig(config, configPath);
 
     process.stdout.write(
-      `\nWrote ${configPath}\n` +
-        `  workspace:   ${workspace}\n` +
-        `  senders:     ${allowedSenders.join(", ") || "(none — nobody can talk to it!)"}\n` +
-        `  permission:  ${permissionMode}\n` +
-        `  channel:     terminal\n\n` +
-        "Edit that file to change anything, or re-run `wechatclaw-claude init`.\n" +
-        "Start with: wechatclaw-claude start\n",
+      `\n已写入 ${configPath}\n` +
+        `  工作目录:  ${workspace}\n` +
+        `  发送者:    ${allowedSenders.join(", ") || "(空 —— 没人能跟它说话!)"}\n` +
+        `  权限:      ${permissionMode}\n` +
+        `  渠道:      terminal\n\n` +
+        "想改什么直接编辑那个文件,或重新跑 `wechatclaw-claude init`。\n" +
+        "启动:wechatclaw-claude start\n",
     );
   } finally {
     rl.close();
@@ -221,15 +221,15 @@ async function pickPermissionMode(
   workspace: string,
   def: PermissionMode,
 ): Promise<PermissionMode> {
-  const answer = (await ask("Choose:", def)) as PermissionMode;
+  const answer = (await ask("选一个:", def)) as PermissionMode;
   const mode: PermissionMode =
     answer === "plan" || answer === "acceptEdits" || answer === "bypassPermissions" ? answer : def;
   if (mode !== "bypassPermissions") return mode;
 
-  // Unrestricted access from a chat app should cost a deliberate keystroke.
-  const confirm = await ask(`\nbypassPermissions gives full disk access. Retype the workspace path to confirm:`);
+  // 从聊天应用来的无限制访问,该花一次刻意的击键。
+  const confirm = await ask(`\nbypassPermissions 给的是整个磁盘的完全权限。重新输入一遍工作目录路径来确认:`);
   if (path.resolve(confirm) !== path.resolve(workspace)) {
-    process.stdout.write("  Did not match — falling back to acceptEdits.\n");
+    process.stdout.write("  不匹配 —— 退回到 acceptEdits。\n");
     return "acceptEdits";
   }
   return "bypassPermissions";
@@ -252,12 +252,12 @@ async function preflight(): Promise<void> {
       timeout: 10_000,
       windowsHide: true,
     });
-    process.stdout.write(`Found Claude Code: ${stdout.trim()}\n`);
-    process.stdout.write("Make sure you are logged in (`claude auth`) — the bridge uses your subscription.\n\n");
+    process.stdout.write(`找到 Claude Code:${stdout.trim()}\n`);
+    process.stdout.write("确认你已经登录(`claude auth`)—— 桥接用的是你的订阅。\n\n");
   } catch {
     process.stdout.write(
-      "WARNING: could not run `claude --version`. Install Claude Code and log in first,\n" +
-        "or the bridge will fail on the first message.\n\n",
+      "警告:跑不了 `claude --version`。请先装好 Claude Code 并登录,\n" +
+        "否则第一条消息就会失败。\n\n",
     );
   }
 }
