@@ -131,6 +131,12 @@ async function runServe(): Promise<void> {
         `  auth:      ${apiKey ? "Bearer token required (WCC_API_KEY)" : "none (loopback only)"}\n` +
         "Point OpenClaw's model provider at this URL. Ctrl+C to quit.\n",
     );
+    // Pre-warm the default conversation so the first message skips Claude's
+    // ~3.5s cold start. Set WCC_NO_PREWARM=1 to disable.
+    if (process.env.WCC_NO_PREWARM !== "1") {
+      process.stdout.write("Pre-warming Claude Code (~6s) — send your first message after that for a fast reply.\n");
+      backend.warm("default", config.defaultWorkspace, config.model);
+    }
   });
 }
 

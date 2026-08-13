@@ -111,6 +111,19 @@ test("backend streams deltas + tool progress and ends with done", async () => {
   await backend.dispose();
 });
 
+test("warm() pre-spawns a process that the first turn reuses, with no junk turn", async () => {
+  const backend = new ClaudeCodeBackend({ claudeBin: fakeClaude });
+  backend.warm("default", process.cwd());
+  assert.equal(backend.residentCount, 1);
+
+  const events = await collect(backend.run({ conversationId: "default", prompt: "hi", cwd: process.cwd() }));
+  const done = events.at(-1);
+  // "turn 1" proves the warmed process carried no prior (junk) turn.
+  assert.equal(done?.type === "done" ? done.text : "", "echo:hi (turn 1)");
+  assert.equal(backend.residentCount, 1);
+  await backend.dispose();
+});
+
 test("a second turn reuses the resident process", async () => {
   const backend = new ClaudeCodeBackend({ claudeBin: fakeClaude });
   const first = await collect(backend.run({ conversationId: "c1", prompt: "one", cwd: process.cwd() }));

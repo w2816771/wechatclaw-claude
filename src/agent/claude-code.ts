@@ -80,6 +80,22 @@ export class ClaudeCodeBackend implements AgentBackend {
     return { [Symbol.asyncIterator]: gen };
   }
 
+  /**
+   * Pre-spawn a conversation's process so the first real turn skips cold start.
+   *
+   * Claude Code does its heavy startup (hooks, plugin sync, CLAUDE.md scan)
+   * eagerly at spawn — before any stdin — so simply spawning here warms it. No
+   * turn is sent, so the first real message starts a clean session with nothing
+   * pre-injected.
+   */
+  warm(conversationId: string, cwd: string, model?: string): void {
+    const resolved = path.resolve(cwd);
+    const existing = this.sessions.get(conversationId);
+    if (existing && !existing.closed) return;
+    const session = this.spawnSession({ conversationId, prompt: "", cwd: resolved, model }, resolved);
+    this.scheduleIdleShutdown(session);
+  }
+
   async interrupt(conversationId: string): Promise<void> {
     const session = this.sessions.get(conversationId);
     if (session) this.destroy(session, new Error("turn interrupted by request"));

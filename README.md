@@ -128,6 +128,17 @@ provider-config field names should be confirmed against your installed version.
   agent's own sandboxing.
 - Secrets are read from the environment, never written to the config file.
 
+## Performance notes
+
+- **First message after `serve` starts** pays Claude Code's cold boot (hooks,
+  plugin sync, CLAUDE.md scan). `serve` pre-warms a process at startup, so as
+  long as your first message lands a few seconds after boot, it skips the cold
+  start (~7s → ~4-5s here). Disable with `WCC_NO_PREWARM=1`.
+- **Every message** then costs the model's own response time (~3-4s for
+  `sonnet`). That floor is the model, not this bridge — set `model` to `haiku`
+  in the config for noticeably faster (if less capable) replies.
+- The HTTP server and localhost networking add negligible latency (a few ms).
+
 ## Development
 
 ```bash
